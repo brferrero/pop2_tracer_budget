@@ -60,6 +60,7 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=59):
     var_zint_map = var_zint_map.where(var_zint_map != 0.)
     var_zint_map.attrs = attr
     var_zint_map.name = tracer.name + "_zint" 
+    var_zint_map = var_zint_map.drop(("ULONG","ULAT"))
     return var_zint_map
 
 
@@ -181,6 +182,7 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
     var_vert_adv_res_map = -1*var1
     var_vert_adv_res_map.attrs = attr
     var_vert_adv_res_map.name = TRACER.lower()+"_vert_adv_res"
+    var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT","z_w_top"))
     return var_vert_adv_res_map
 
 
@@ -236,6 +238,7 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
     var_lat_mix_res_map = var5.sum(dim='z_t')
     var_lat_mix_res_map.attrs = attr
     var_lat_mix_res_map.name = TRACER.lower() + "_lat_mix_res"
+    var_lat_mix_res_map = var_lat_mix_res_map.drop(("ULONG","ULAT"))
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
 
 
@@ -272,6 +275,7 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=59, COMPSET="B20TRC5C
     FIELD_TOP = FIELD_TOP*tarea_top
     var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
     var_vert_mix_map.name = TRACER.lower() + "_dia_vmix"
+    var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
 
@@ -305,6 +309,7 @@ def tracer_budget_adi_vmix (TRACER, vol3d, klo, khi, COMPSET="B20TRC5CNBDRD", en
     FIELD_TOP = FIELD_TOP*vol3d[klo]
     var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
     var_vert_mix_map.name = TRACER.lower() + "_adi_vmix"
+    var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
 
@@ -353,7 +358,7 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     var_sflux_map = var1*area2d
     long_name = "vertical flux across sea surface"
     attr = {'long_name' : long_name, 'units' : units}
-    var_sflux_map = var_sflux_map.drop(("ULAT","ULONG" ))
     var_sflux_map.attrs = attr
     var_sflux_map.name = TRACER.lower() + "_" + var_name 
+    var_sflux_map = var_sflux_map.drop(("ULONG","ULAT"))
     return var_sflux_map
