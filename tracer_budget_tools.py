@@ -65,7 +65,7 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=59):
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_tend_appr (TRACER, time, time_bnd, var_zint):
+def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     """
     Computes approximate TRACER budget tendency given vertically-integrated POP
     TRACER based on differencing successive monthly means
@@ -73,29 +73,23 @@ def tracer_budget_tend_appr (TRACER, time, time_bnd, var_zint):
           rather than mid-month; assumes time has dimension "days".
     """
     secperday = 60.*60*24
-    nt = time.shape[0]
-    dt = (time_bnd[:,1] - time_bnd[:,0])*secperday
+    # days in each month * sec/day 
+    dt = (time_bnd.isel(d2=1) - time_bnd.isel(d2=0))*secperday
     vfill_value = np.ones(var_zint[0].shape)*np.nan
     
     units = var_zint.units + '/s'
     long_name = var_zint.long_name + ' tendency'
     attr = {'long_name' : long_name, 'units' : units}
     
-    with ProgressBar():
-        print("Computing " + long_name + " ...")
-        var1 = var_zint.load()
-
-    var2 = var1
-    aux = (var1[0:nt-2].values + var1[1:nt-1].values)*0.5
-    var1[0:nt-2].values = aux
-    var1[nt-1] = vfill_value
+    # apprx to end of month 
+    # X = [X_t + X_(t+1)]/2 
+    X = (var_zint + var_zint.shift(time=-1))*0.5
     
-    var2[1:nt-2].values = (var1[1:nt-2].values - var1[0:nt-3].values)
-    var2[0] = vfill_value 
-    var2[nt-1,:,:] = vfill_value
+    # X = X_t - X_(t-1)
+    dX = X - X.shift(time=1)
     
     #units per seconds
-    var_zint_tend = var2/dt
+    var_zint_tend = dX/dt
     var_zint_tend.attrs = attr
     var_zint_tend.name = TRACER.lower() + "_tend"
     return var_zint_tend
