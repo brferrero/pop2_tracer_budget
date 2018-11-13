@@ -184,10 +184,10 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     tracer horizontal mixing
-    compute tracer hmix integrals
+    compute tracer hmix integrals from Horiz Diffusive Fluxes
     vertical fluxes are positive up
     """
     ens_str = "{:0>3d}".format(ens_member)
@@ -203,25 +203,25 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
     
     long_name = "lateral diffusive flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {'long_name' : long_name, 'units' : units, 'description' : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description}
     
     # read tracer associate variable
     f1 = glob(dir_budget+var_name1+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name1+"*.nc")[0]
     f2 = glob(dir_budget+var_name2+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name2+"*.nc")[0]
     
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    u_e = ds1[var_name1]
-    v_n = ds2[var_name2]
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     
     # shift vol3d
-    vol_c = vol3d
-    vol_w = vol3d.shift(nlat=-1)
-    vol_s = vol3d.shift(nlon=-1)
+    vol_c = vol3d.isel(z_t=slice(klo,khi))
+    vol_w = vol3d.roll(nlon=1,roll_coords=False).isel(z_t=slice(klo,khi))
+    vol_s = vol3d.roll(nlat=1,roll_coords=False).isel(z_t=slice(klo,khi))
     
     # shift
-    u_w = u_e.shift(nlat=-1)
-    v_s = v_n.shift(nlon=-1)
+    u_w = u_e.roll(nlon=1,roll_coords=False)
+    v_s = v_n.roll(nlat=1,roll_coords=False)
     
     # e.g.: degC cm^3/s
     var1 = u_e*vol_c
@@ -229,15 +229,16 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
     var3 = v_n*vol_c
     var4 = v_s*vol_s
     # Div []
-    #var5 = (var2-var1) + (var4-var3)
-    var5 = (var1 - var2) + (var3-var4)
+    var5 = (var2-var1) + (var4-var3)
+    #var5 = (var1 - var2) + (var3-var4)
+    # copy coordinates
+    var5 = var5.assign_coords(TLAT=u_e.coords.get("TLAT"))
     # vertical integration
-    var_lat_mix_res_map = var5.sum(dim='z_t')
+    var_lat_mix_res_map = var5.sum(dim="z_t")
     var_lat_mix_res_map.attrs = attr
     var_lat_mix_res_map.name = TRACER.lower() + "_lat_mix_res"
     var_lat_mix_res_map = var_lat_mix_res_map.drop(("ULONG","ULAT"))
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
-
 
 #------------------------------------------------------------------------------
 def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=59, COMPSET="B20TRC5CNBDRD", ens_member=4):
