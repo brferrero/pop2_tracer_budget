@@ -51,10 +51,11 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=59):
     Returns a 2d tracer map vertical integrated
     !checked!
     """
-    units = tracer.units + ' cm^3'
-    description = 'Int_V {' + tracer.name + '} dV'
-    long_name = tracer.name + ' vertical average'
-    attr = {'long_name' : long_name, 'units' : units, 'description': description,            "k_range" : str(klo)+" - "+str(khi)}
+    units = tracer.units + " cm^3"
+    description = "Int_V {" + tracer.name + "} dV"
+    long_name = tracer.name + " vertical average"
+    attr = {"long_name" : long_name, "units" : units, "description": description, \
+            "k_range" : str(klo)+" - "+str(khi)}
     var = tracer[:,klo:khi] * vol3d[klo:khi]
     var_zint_map = var.sum(dim='z_t')
     var_zint_map = var_zint_map.where(var_zint_map != 0.)
@@ -96,7 +97,7 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0,khi=25,tlo=912,thi=1032):
+def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     compute tracer lateral advection integral 
     based on tracer_budget_adv.ncl
@@ -125,7 +126,6 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
     ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={'time': 60})
     u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
-    print(u_e)
     # shift vol3d
     vol_c = vol3d.isel(z_t=slice(klo,khi))
     vol_w = vol3d.shift(nlon=1).isel(z_t=slice(klo,khi))
@@ -149,9 +149,9 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
     """
-    tracer vertical advection
+    tracer vertical advection integral
     """
     ens_str = "{:0>3d}".format(ens_member)
     dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
@@ -168,16 +168,16 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
     attr = {'long_name' : long_name, 'units' : units, 'description' : description}
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    FIELD = ds1[var_name]
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 60})
+    wt = ds1[var_name].isel(time=slice(tlo,thi))
     vol3d = vol3d.rename({'z_t' : 'z_w_top'})
-    volc = vol3d[0].values
     # e.g. degC cm^3/s
-    var1 = FIELD[:,1]*volc
-    var_vert_adv_res_map = -1*var1
+    var1 = wt.isel(z_w_top=klo)*vol3d.isel(z_w_top=klo)
+    var2 = wt.isel(z_w_top=khi+1)*vol3d.isel(z_w_top=khi+1)
+    var_vert_adv_res_map = (var2 - var1)
     var_vert_adv_res_map.attrs = attr
     var_vert_adv_res_map.name = TRACER.lower()+"_vert_adv_res"
-    var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT","z_w_top"))
+    var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT"))
     return var_vert_adv_res_map
 
 
