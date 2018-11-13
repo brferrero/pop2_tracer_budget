@@ -96,9 +96,9 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0,khi=25,tlo=912,thi=1032):
     """
-    tracer lateral advection 
+    compute tracer lateral advection integral 
     based on tracer_budget_adv.ncl
     """
     ens_str = "{:0>3d}".format(ens_member)
@@ -121,23 +121,24 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
     attr = {'long_name' : long_name, 'units' : units, 'description' : description}
     
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    u_e = ds1[var_name1]
-    v_n = ds2[var_name2]
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 60})
+    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={'time': 60})
+    u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    print(u_e)
     # shift vol3d
-    vol_c = vol3d
-    vol_w = vol3d.shift(nlat=-1)
-    vol_s = vol3d.shift(nlon=-1)
-    # shift
-    u_w = u_e.shift(nlat=-1)
-    v_s = v_n.shift(nlon=-1)
+    vol_c = vol3d.isel(z_t=slice(klo,khi))
+    vol_w = vol3d.shift(nlon=1).isel(z_t=slice(klo,khi))
+    vol_s = vol3d.shift(nlat=1).isel(z_t=slice(klo,khi))
+    # shift:
+    u_w = u_e.shift(nlon=1)
+    v_s = v_n.shift(nlat=1)
     # e.g.: degC cm^3/s
     var1 = u_e*vol_c
     var2 = u_w*vol_w
     var3 = v_n*vol_c
     var4 = v_s*vol_s
-    # Div []
+    # Div [du/dx + du/dy]
     var5 = (var2-var1) + (var4-var3)
     # vertical integration
     var_lat_adv_res_map = var5.sum(dim='z_t')
