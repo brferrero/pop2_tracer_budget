@@ -241,7 +241,7 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, kl
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
 
 #------------------------------------------------------------------------------
-def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=59, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
     """
     Computes vertical integral of diabatic vertical mixing (DIA_IMPVF_), ie. KPP
     """
@@ -257,17 +257,17 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=59, COMPSET="B20TRC5C
     
     long_name = "vertical (diabatic) mixing flux (resolved)"
     description = "Int_z{-d[<"+var_name+">]/dz}" 
-    attr = {'long_name' : long_name, 'units' : units, 'description' : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description}
     
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    FIELD = ds1[var_name]
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC cm/s
     # zero diffusive flux across sea surface -> 0 
-    FIELD_TOP = FIELD[:,klo]
-    FIELD_BOT = FIELD[:,khi]
-    tarea_bot = tarea.where(kmt > khi,0)
-    tarea_top = tarea.where(kmt > klo,0)
+    FIELD_TOP = FIELD.isel(z_w_bot=klo)
+    FIELD_BOT = FIELD.isel(z_w_bot=khi)
+    tarea_bot = tarea.where(kmt > khi,0.)
+    tarea_top = tarea.where(kmt > klo,0.)
     #
     FIELD_BOT = FIELD_BOT*tarea_bot
     FIELD_TOP = FIELD_TOP*tarea_top
@@ -278,7 +278,7 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=59, COMPSET="B20TRC5C
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_adi_vmix (TRACER, vol3d, klo, khi, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     Computes vertical integral of adiabatic vertical mixing (HDIFB_), ie. GM+Submeso
     """
@@ -294,17 +294,18 @@ def tracer_budget_adi_vmix (TRACER, vol3d, klo, khi, COMPSET="B20TRC5CNBDRD", en
     
     long_name = "vertical (adiabatic) mixing flux (resolved)"
     description = "Int_z{-d[<"+var_name+">]/dz}" 
-    attr = {'long_name' : long_name, 'units' : units, 'description' : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description}
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-    FIELD = ds1[var_name]
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC/s
     # zero diffusive flux across sea surface -> 0 
-    FIELD_TOP = FIELD[:,klo]
-    FIELD_BOT = FIELD[:,khi]
+    FIELD_TOP = FIELD.isel(z_w_bot=klo)
+    FIELD_BOT = FIELD.isel(z_w_bot=khi)
     #
-    FIELD_BOT = FIELD_BOT*vol3d[khi]
-    FIELD_TOP = FIELD_TOP*vol3d[klo]
+    vol3d = vol3d.rename({"z_t" : "z_w_bot"})
+    FIELD_BOT = FIELD_BOT*vol3d.isel(z_w_bot=khi)
+    FIELD_TOP = FIELD_TOP*vol3d.isel(z_w_bot=klo)
     var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
     var_vert_mix_map.name = TRACER.lower() + "_adi_vmix"
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
@@ -325,11 +326,10 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
 
     rho_sw = ds1["rho_sw"]              # density of saltwater (g/cm^3)
     rho_sw = rho_sw * 1.e-3             # (kg/cm^3)
-    
     cp_sw = ds1["cp_sw"]                # spec. heat of saltwater (erg/g/K)
     cp_sw = cp_sw * 1.e-7 * 1.e3        # (J/kg/K)
     rho_cp = rho_sw * cp_sw             # (J/cm^3/K)
@@ -337,7 +337,7 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     latfus = ds1["latent_heat_fusion"]  # lat heat of fusion (erg/g)
     latfus = latfus * 1.e-7 * 1.e3      # (J/kg)
 
-    if var_name in ['SHF', 'QFLUX', 'SENH_F', 'LWDN_F', 'LWUP_F', 'SHF_QSW', 'MELTH_F']:
+    if var_name in ["SHF", "QFLUX", "SENH_F", "LWDN_F", "LWUP_F", "SHF_QSW", "MELTH_F"]:
         scale_factor = 1.e-4 * (1./rho_cp)          #W/m^2 -> degC cm/s
     elif var_name in ["SNOW_F","IOFF_F"]:
         scale_factor = -latfus*1.e-4 * (1./rho_cp)  #kg/m^2/s -> degC cm/s
@@ -351,12 +351,13 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     else:
         units = "PSU cm^3/s"
         
-    FIELD = ds1[var_name]
+    FIELD = ds1[var_name].isel(time=slice(tlo,thi))
     var1 = FIELD * scale_factor
     var_sflux_map = var1*area2d
     long_name = "vertical flux across sea surface"
-    attr = {'long_name' : long_name, 'units' : units}
+    attr = {"long_name" : long_name, "units" : units}
     var_sflux_map.attrs = attr
     var_sflux_map.name = TRACER.lower() + "_" + var_name 
     var_sflux_map = var_sflux_map.drop(("ULONG","ULAT"))
     return var_sflux_map
+#------------------------------------------------------------------------------
