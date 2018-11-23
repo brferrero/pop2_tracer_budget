@@ -6,7 +6,7 @@
 from tracer_budget_tools import *
 from dask.diagnostics import ProgressBar
 import os
-#get_ipython().run_line_magic('matplotlib', 'inline')
+#get_ipython().run_line_magic("matplotlib", "inline")
 
 #*****************************************************************************#
 # I/O
@@ -19,52 +19,68 @@ ens_str = "{:0>3d}".format(ens_member)
 file_tracer = glob(dir_lens + TRACER + "/" + COMPSET + "/b.e11."+ COMPSET +".f09_g16."+ens_str+".pop.h."+TRACER+"*.nc")[0]
 fileout = "./nc/b.e11."+ COMPSET +".f09_g16."+ens_str+".pop.h.budget.nc"
 
+klo = 0
+khi = 25
+tlo = 912
+thi = 1032
 
+#*****************************************************************************#
 # read tracer files
-ds_tracer = xr.open_dataset(file_tracer,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-temp = ds_tracer[TRACER]
+ds_tracer = xr.open_dataset(file_tracer,decode_times=False,mask_and_scale=True,chunks={"time": 36})
+# select 120 months
+temp = ds_tracer[TRACER].isel(time=slice(tlo,thi))
 
 # grid vars
-dz = ds_tracer['dz'];
-tarea = ds_tracer['TAREA']
-kmt = ds_tracer['KMT']
+dz = ds_tracer["dz"];
+tarea = ds_tracer["TAREA"]
+kmt = ds_tracer["KMT"]
 
 #*****************************************************************************#
 mask3d = tracer_budget_mask3d(temp[0])
 vol3d = tracer_budget_vol3d(tarea,dz,kmt)
-mask2d = tracer_budget_mask2d(ds_tracer['REGION_MASK'])
+mask2d = tracer_budget_mask2d(ds_tracer["REGION_MASK"])
 area2d = tarea*mask2d
+# select 120 months
+time_bound = ds_tracer["time_bound"].isel(time=slice(tlo,thi))
 
 #*****************************************************************************#
 # temp_zint
-temp_zint_map = tracer_budget_var3d_zint_map (temp,vol3d)
+temp_zint_map = tracer_budget_var3d_zint_map (temp, vol3d, klo, khi)
 
+# temp_tend
 print("computing total temp tend")
-temp_tend = tracer_budget_tend_appr(TRACER, ds_tracer['time_bound'],temp_zint_map)
+temp_tend = tracer_budget_tend_appr(TRACER, time_bound,temp_zint_map)
 
 #*****************************************************************************#
 # Creating Dataset
 ds_out = temp_tend.to_dataset()
 ds_out["temp_zint_map"] = temp_zint_map
-print(ds_out)
+#print(ds_out)
 
 #*****************************************************************************#
 #
 print("computing temp_lat_adv_res")
 temp_lat_adv_res = tracer_budget_lat_adv_resolved(TRACER,vol3d)
+ds_out["temp_lat_adv_res"] = temp_lat_adv_res
 
 print("computing temp_vert_adv_res")
 temp_vert_adv_res = tracer_budget_vert_adv_resolved(TRACER,vol3d)
+ds_out["temp_vert_adv_res"] = temp_vert_adv_res
 
 print("computing temp_lat_mix")
 temp_lat_mix = tracer_budget_hmix(TRACER, vol3d)
+ds_out["temp_lat_mix"] = temp_lat_mix
 
 print("computing temp_vmix")
-temp_dia_vmix = tracer_budget_dia_vmix(TRACER, tarea, kmt,0,59)
-temp_adi_vmix = tracer_budget_adi_vmix(TRACER, vol3d, 0, 59)
+temp_dia_vmix = tracer_budget_dia_vmix(TRACER, tarea, kmt)
+temp_adi_vmix = tracer_budget_adi_vmix(TRACER, vol3d)
 temp_vmix = temp_dia_vmix + temp_adi_vmix
 temp_vmix.attrs = {"long_name" : "vertical (diabatic+adiabatic) mixing flux"}
 temp_vmix.name = "temp_vmix"
+ds_out["temp_vmix"] = temp_vmix
+ds_out["temp_vmix"] = temp_vmix
+ds_out["temp_dia_vmix"] = temp_dia_vmix
+ds_out["temp_adi_vmix"] = temp_adi_vmix
 
 #*****************************************************************************#
 # fluxes terms
@@ -86,11 +102,11 @@ ens_str = "{:0>3d}".format(ens_member)
 dir_budget = "/chuva/db2/CESM-LENS/download/budget/"    
 f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
 # read tracer associate variable
-ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
-KPP_SRC_TEMP = ds1[var_name]
+ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 36})
+KPP_SRC_TEMP = ds1[var_name].isel(time=slice(tlo,thi))
 KPP_SRC_TEMP = KPP_SRC_TEMP.where(KPP_SRC_TEMP != 0.)
-# compute temp flux
-temp_kpp_src = tracer_budget_var3d_zint_map(KPP_SRC_TEMP,vol3d,0,44)
+# compute KPP_temp flux (OBS. klo=1 else ERROR)
+temp_kpp_src = tracer_budget_var3d_zint_map(KPP_SRC_TEMP,vol3d,klo+1,khi)
 temp_kpp_src.name = "temp_kpp_src"
 
 #*****************************************************************************#
@@ -133,10 +149,6 @@ if os.path.isfile(fileout):
     os.remove(fileout)
 print("saving file: " + fileout)
 with ProgressBar():
-    ds_out.to_netcdf(fileout,mode='w',format='NETCDF4')
+    ds_out.to_netcdf(fileout,mode="w",format="NETCDF4")
 
 #*****************************************************************************#
-# check anomaly: ok
-#temp_zint_mean = temp_zint_map[0:119].mean(dim='time').load()
-#anom = temp_zint_map[996] - temp_zint_mean
-#(anom*1e-17).plot(vmin=-30,vmax=30,cmap='RdBu_r')
