@@ -15,11 +15,11 @@ def tracer_budget_vol3d (tarea, dz, kmt):
     Returns global 3D volume DataArray: vold3(nz,ny,nx) dtype=float64
     NOTE: does not include SSH variations
     """
-    vol3d = (dz*tarea.astype('float64')).load()
+    vol3d = (dz*tarea.astype("float64")).load()
     for i in range(dz.shape[0]):
         vol3d[i,:,:] = vol3d[i].where(kmt > i)
-    vol3d.attrs = {'units' : 'cm3', 'long_name' : 'Tcell volume'}
-    vol3d = vol3d.drop(('ULAT','ULONG'))
+    vol3d.attrs = {"units" : "cm3", "long_name" : "Tcell volume"}
+    vol3d = vol3d.drop(("ULAT","ULONG"))
     vol3d.name = "vol3d"
     return vol3d
 
@@ -39,17 +39,17 @@ def tracer_budget_mask3d (var3d):
     Return volume mask: if ocean than 1 else nan
     """
     mask3d = var3d/var3d
-    mask3d.attrs = {'units' : '1 / np.nan', 'long_name' : 'mask3d'}
+    mask3d.attrs = {"units" : "1 / np.nan", "long_name" : "mask3d"}
     mask3d.name = "mask3d" 
     return mask3d.where(mask3d != 0.,np.nan)
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=59):
+def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=25):
     """
-    Arguments: var4d tracer(t,z,y,x), vol3d cell volume, klo : lowest k index, khi : highest k index
+    Arguments: var4d tracer(t,z,y,x), vol3d cell volume, 
+               klo : lowest k index, khi : highest k index
     Returns a 2d tracer map vertical integrated
-    !checked!
     """
     units = tracer.units + " cm^3"
     description = "Int_V {" + tracer.name + "} dV"
@@ -57,7 +57,7 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=59):
     attr = {"long_name" : long_name, "units" : units, "description": description, \
             "k_range" : str(klo)+" - "+str(khi)}
     var = tracer.isel(z_t=slice(klo,khi)) * vol3d.isel(z_t=slice(klo,khi))
-    var_zint_map = var.sum(dim='z_t')
+    var_zint_map = var.sum(dim="z_t")
     var_zint_map = var_zint_map.where(var_zint_map != 0.)
     var_zint_map.attrs = attr
     var_zint_map.name = tracer.name + "_zint" 
@@ -78,9 +78,9 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     dt = (time_bnd.isel(d2=1) - time_bnd.isel(d2=0))*secperday
     vfill_value = np.ones(var_zint[0].shape)*np.nan
     
-    units = var_zint.units + '/s'
-    long_name = var_zint.long_name + ' tendency'
-    attr = {'long_name' : long_name, 'units' : units}
+    units = var_zint.units + "/s"
+    long_name = var_zint.long_name + " tendency"
+    attr = {"long_name" : long_name, "units" : units}
     
     # apprx to end of month 
     # X = [X_t + X_(t+1)]/2 
@@ -119,11 +119,11 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
     
     long_name = "lateral advective flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {'long_name' : long_name, 'units' : units, 'description' : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description}
     
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 60})
-    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={'time': 60})
+    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     # shift vol3d
@@ -141,7 +141,7 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
     # Div [du/dx + du/dy]
     var5 = (var2-var1) + (var4-var3)
     # vertical integration
-    var_lat_adv_res_map = var5.sum(dim='z_t')
+    var_lat_adv_res_map = var5.sum(dim="z_t")
     var_lat_adv_res_map.attrs = attr
     var_lat_adv_res_map.name = TRACER.lower() + "_lat_adv_res"
     var_lat_adv_res_map = var_lat_adv_res_map.drop(("ULONG","ULAT"))
@@ -171,7 +171,7 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     wt = ds1[var_name].isel(time=slice(tlo,thi))
-    vol3d = vol3d.rename({'z_t' : 'z_w_top'})
+    vol3d = vol3d.rename({"z_t" : "z_w_top"})
     # e.g. degC cm^3/s
     var1 = wt.isel(z_w_top=klo)*vol3d.isel(z_w_top=klo)
     var2 = wt.isel(z_w_top=khi+1)*vol3d.isel(z_w_top=khi+1)
@@ -313,7 +313,7 @@ def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_member=4):
+def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
     """
     compute domain-specific maps of tracer surface fluxes
     
