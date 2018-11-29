@@ -30,7 +30,6 @@ def tracer_budget_mask2d (region_mask, sel_area = 0):
     """
     mask = region_mask
     mask = mask.where(region_mask != sel_area,np.nan)
-    mask.name = "mask"
     return (mask/mask)
 
 #------------------------------------------------------------------------------
@@ -39,11 +38,9 @@ def tracer_budget_mask3d (var3d):
     Return volume mask: if ocean than 1 else nan
     """
     mask3d = var3d/var3d
-    mask3d.attrs = {"units" : "1 / np.nan", "long_name" : "mask3d"}
-    mask3d.name = "mask3d" 
+    mask3d.attrs = {'units' : '1 / np.nan', 'long_name' : 'mask3d'}
     return mask3d.where(mask3d != 0.,np.nan)
-
-
+    
 #------------------------------------------------------------------------------
 def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=25):
     """
@@ -72,22 +69,22 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     TRACER based on differencing successive monthly means
     NOTE: Assumes monthly POP output with timestamp at end-of-month
           rather than mid-month; assumes time has dimension "days".
+    Obs: from tracer_budget_util.ncl
     """
     secperday = 60.*60*24
     # days in each month * sec/day 
     dt = (time_bnd.isel(d2=1) - time_bnd.isel(d2=0))*secperday
-    vfill_value = np.ones(var_zint[0].shape)*np.nan
-    
     units = var_zint.units + "/s"
+    
     long_name = var_zint.long_name + " tendency"
     attr = {"long_name" : long_name, "units" : units}
     
     # apprx to end of month 
-    # X = [X_t + X_(t+1)]/2 
+    # X = [X_t + X_(t+1)]/2
     X = (var_zint + var_zint.shift(time=-1))*0.5
     
     # X = X_t - X_(t-1)
-    dX = X - X.shift(time=1)
+    dX = X.shift(time=1) - X
     
     #units per seconds
     var_zint_tend = dX/dt
@@ -97,7 +94,8 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
+                                    ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     compute tracer lateral advection integral 
     based on tracer_budget_adv.ncl
@@ -119,29 +117,26 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
     
     long_name = "lateral advective flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {"long_name" : long_name, "units" : units, "description" : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi)}
     
     # read tracer associate variable
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
-    v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
-    # shift vol3d
-    vol_c = vol3d.isel(z_t=slice(klo,khi))
-    vol_w = vol3d.shift(nlon=1).isel(z_t=slice(klo,khi))
-    vol_s = vol3d.shift(nlat=1).isel(z_t=slice(klo,khi))
-    # shift:
-    u_w = u_e.shift(nlon=1)
-    v_s = v_n.shift(nlat=1)
+    ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    # vol3d
+    vol = vol3d.isel(z_t=slice(klo,khi))
     # e.g.: degC cm^3/s
-    var1 = u_e*vol_c
-    var2 = u_w*vol_w
-    var3 = v_n*vol_c
-    var4 = v_s*vol_s
+    ue = ue*vol
+    vn = vn*vol
+    # shift grid:
+    uw = ue.roll(nlon=1,roll_coords=False)
+    vs = vn.roll(nlat=1,roll_coords=False)
     # Div [du/dx + du/dy]
-    var5 = (var2-var1) + (var4-var3)
+    hdiv = (uw-ue) + (vs-vn)
     # vertical integration
-    var_lat_adv_res_map = var5.sum(dim="z_t")
+    var_lat_adv_res_map = hdiv.sum(dim="z_t")
     var_lat_adv_res_map.attrs = attr
     var_lat_adv_res_map.name = TRACER.lower() + "_lat_adv_res"
     var_lat_adv_res_map = var_lat_adv_res_map.drop(("ULONG","ULAT"))
@@ -149,7 +144,8 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
+def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
+                                     ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
     """
     tracer vertical advection integral
     Obs. klo==0 -> wtt=0. => klo=1; khi => khi+1 (max:=59)
@@ -166,17 +162,22 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
     
     long_name = "vertical advective flux (resolved)"
     description = "Int_z{-d[<"+var_name+">]/dz}"
-    attr = {"long_name" : long_name, "units" : units, "description" : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi)}
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     wt = ds1[var_name].isel(time=slice(tlo,thi))
-    vol3d = vol3d.rename({"z_t" : "z_w_top"})
+    wt = wt.rename({"z_w_top" : "z_t"})
+    wt["z_t"] = vol3d.z_t
+    wt = wt*vol3d
     # e.g. degC cm^3/s
-    var1 = wt.isel(z_w_top=klo)*vol3d.isel(z_w_top=klo)
-    var2 = wt.isel(z_w_top=khi+1)*vol3d.isel(z_w_top=khi+1)
-    var2 = var2.where(~np.isnan(var2),0.)
-    var_vert_adv_res_map = (var2 - var1)
+    var_top = wt.isel(z_t=klo)
+    var_bottom = wt.isel(z_t=khi+1)
+    # since it has NaN
+    var_bottom = var_bottom.where(~np.isnan(var_bottom),0.)
+    # vertical convergence
+    var_vert_adv_res_map = (var_bottom - var_top)
     var_vert_adv_res_map.attrs = attr
     var_vert_adv_res_map.name = TRACER.lower()+"_vert_adv_res"
     var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT"))
@@ -184,7 +185,8 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
+                        ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     tracer horizontal mixing
     compute tracer hmix integrals from Horiz Diffusive Fluxes
@@ -203,7 +205,8 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, kl
     
     long_name = "lateral diffusive flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {"long_name" : long_name, "units" : units, "description" : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi)}
     
     # read tracer associate variable
     f1 = glob(dir_budget+var_name1+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name1+"*.nc")[0]
@@ -211,37 +214,34 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, kl
     
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    u_e = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
-    v_n = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     
-    # shift vol3d
-    vol_c = vol3d.isel(z_t=slice(klo,khi))
-    vol_w = vol3d.roll(nlon=1,roll_coords=False).isel(z_t=slice(klo,khi))
-    vol_s = vol3d.roll(nlat=1,roll_coords=False).isel(z_t=slice(klo,khi))
+    # vol3d
+    vol = vol3d.isel(z_t=slice(klo,khi))
+    # e.g.: degC cm^3/s
+    ue = ue*vol
+    vn = vn*vol
     
     # shift
-    u_w = u_e.roll(nlon=1,roll_coords=False)
-    v_s = v_n.roll(nlat=1,roll_coords=False)
+    uw = ue.roll(nlon=1,roll_coords=False)
+    vs = vn.roll(nlat=1,roll_coords=False)
     
-    # e.g.: degC cm^3/s
-    var1 = u_e*vol_c
-    var2 = u_w*vol_w
-    var3 = v_n*vol_c
-    var4 = v_s*vol_s
-    # Div []
-    var5 = (var2-var1) + (var4-var3)
-    #var5 = (var1 - var2) + (var3-var4)
+    # Divergence
+    #hdiv = (uw-ue) + (vs-vn)
+    hdiv = (ue-uw) + (vn-vs)
     # copy coordinates
-    var5 = var5.assign_coords(TLAT=u_e.coords.get("TLAT"))
+    #hdiv = hdiv.assign_coords(TLAT=ue.coords.get("TLAT"))
     # vertical integration
-    var_lat_mix_res_map = var5.sum(dim="z_t")
+    var_lat_mix_res_map = hdiv.sum(dim="z_t")
     var_lat_mix_res_map.attrs = attr
     var_lat_mix_res_map.name = TRACER.lower() + "_lat_mix_res"
     var_lat_mix_res_map = var_lat_mix_res_map.drop(("ULONG","ULAT"))
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
 
 #------------------------------------------------------------------------------
-def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
+def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, \
+                            COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
     """
     Computes vertical integral of diabatic vertical mixing (DIA_IMPVF_), ie. KPP
     """
@@ -257,28 +257,32 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, COMPSET="B20TRC5C
     
     long_name = "vertical (diabatic) mixing flux (resolved)"
     description = "Int_z{-d[<"+var_name+">]/dz}" 
-    attr = {"long_name" : long_name, "units" : units, "description" : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi)}
     
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC cm/s
+    # degC cm^3/s
+    FIELD = FIELD*tarea
     # zero diffusive flux across sea surface -> 0 
     FIELD_TOP = FIELD.isel(z_w_bot=klo)
     FIELD_BOT = FIELD.isel(z_w_bot=khi)
-    tarea_bot = tarea.where(kmt > khi,0.)
-    tarea_top = tarea.where(kmt > klo,0.)
+    #tarea_bot = tarea.where(kmt > khi,0.)
+    #tarea_top = tarea.where(kmt > klo,0.)
     #
-    FIELD_BOT = FIELD_BOT*tarea_bot
-    FIELD_TOP = FIELD_TOP*tarea_top
+    FIELD_BOT = FIELD_BOT.fillna(0.)
     var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
     var_vert_mix_map.name = TRACER.lower() + "_dia_vmix"
+    var_vert_mix_map.attrs = attr
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
+                            ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     Computes vertical integral of adiabatic vertical mixing (HDIFB_), ie. GM+Submeso
     """
@@ -294,26 +298,29 @@ def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD", ens_member=4
     
     long_name = "vertical (adiabatic) mixing flux (resolved)"
     description = "Int_z{-d[<"+var_name+">]/dz}" 
-    attr = {"long_name" : long_name, "units" : units, "description" : description}
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi)}
     # read tracer associate variable
     f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC/s
+    FIELD = FIELD.rename({"z_w_bot" : "z_t"})
+    FIELD["z_t"] = vol3d.z_t
+    FIELD = FIELD*vol3d
     # zero diffusive flux across sea surface -> 0 
-    FIELD_TOP = FIELD.isel(z_w_bot=klo)
-    FIELD_BOT = FIELD.isel(z_w_bot=khi)
+    FIELD_TOP = FIELD.isel(z_t=klo)
+    FIELD_BOT = FIELD.isel(z_t=khi)
     #
-    vol3d = vol3d.rename({"z_t" : "z_w_bot"})
-    FIELD_BOT = FIELD_BOT*vol3d.isel(z_w_bot=khi)
-    FIELD_TOP = FIELD_TOP*vol3d.isel(z_w_bot=klo)
     var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
+    var_vert_mix_map.attrs = attr
     var_vert_mix_map.name = TRACER.lower() + "_adi_vmix"
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
 
 #------------------------------------------------------------------------------
-def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
+def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
+                         ens_member=4, tlo=912, thi=1032):
     """
     compute domain-specific maps of tracer surface fluxes
     
@@ -336,7 +343,7 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     latvap = ds1["latent_heat_vapor"]   # lat heat of vaporiz. (J/kg)
     latfus = ds1["latent_heat_fusion"]  # lat heat of fusion (erg/g)
     latfus = latfus * 1.e-7 * 1.e3      # (J/kg)
-
+    # scale factors
     if var_name in ["SHF", "QFLUX", "SENH_F", "LWDN_F", "LWUP_F", "SHF_QSW", "MELTH_F"]:
         scale_factor = 1.e-4 * (1./rho_cp)          #W/m^2 -> degC cm/s
     elif var_name in ["SNOW_F","IOFF_F"]:
@@ -360,4 +367,23 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD", ens_
     var_sflux_map.name = TRACER.lower() + "_" + var_name 
     var_sflux_map = var_sflux_map.drop(("ULONG","ULAT"))
     return var_sflux_map
+
+
+#------------------------------------------------------------------------------
+def tracer_budget_kpp_src (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
+                            ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
+    """
+    compute tendency from KPP non local mixing term
+    """
+    var_name = "KPP_SRC_"+TRACER
+    ens_str = "{:0>3d}".format(ens_member)
+    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"    
+    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
+    # read tracer associate variable
+    ds = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
+    KPP_SRC = ds[var_name].isel(time=slice(tlo,thi))
+    #KPP_SRC = KPP_SRC.where(KPP_SRC != 0.)
+    # compute temp flux
+    temp_kpp_src = tracer_budget_var3d_zint_map(KPP_SRC,vol3d,klo,khi)
+    return temp_kpp_src
 #------------------------------------------------------------------------------

@@ -96,17 +96,8 @@ temp_ioff_f = tracer_budget_sflux(TRACER, "IOFF_F", area2d)
 temp_shf = tracer_budget_sflux(TRACER, "SHF", area2d)
 
 #*****************************************************************************#
-# KPP_SRC_TEMP: -> to function
-var_name = "KPP_SRC_TEMP"
-ens_str = "{:0>3d}".format(ens_member)
-dir_budget = "/chuva/db2/CESM-LENS/download/budget/"    
-f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-# read tracer associate variable
-ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 36})
-KPP_SRC_TEMP = ds1[var_name].isel(time=slice(tlo,thi))
-KPP_SRC_TEMP = KPP_SRC_TEMP.where(KPP_SRC_TEMP != 0.)
 # compute KPP_temp flux (OBS. klo=1 else ERROR)
-temp_kpp_src = tracer_budget_var3d_zint_map(KPP_SRC_TEMP,vol3d,klo+1,khi)
+temp_kpp_src = tracer_budget_kpp_src (TRACER, vol3d,klo=klo+1,khi=khi)
 temp_kpp_src.name = "temp_kpp_src"
 
 #*****************************************************************************#
