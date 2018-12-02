@@ -84,7 +84,7 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     X = (var_zint + var_zint.shift(time=-1))*0.5
     
     # X = X_t - X_(t-1)
-    dX = X.shift(time=1) - X
+    dX = X - X.shift(time=1)
     
     #units per seconds
     var_zint_tend = dX/dt
