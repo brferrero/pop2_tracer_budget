@@ -15,11 +15,11 @@ def tracer_budget_vol3d (tarea, dz, kmt):
     Returns global 3D volume DataArray: vold3(nz,ny,nx) dtype=float64
     NOTE: does not include SSH variations
     """
-    vol3d = (dz*tarea.astype("float64")).load()
+    vol3d = (dz*tarea.astype('float64')).load()
     for i in range(dz.shape[0]):
-        vol3d[i,:,:] = vol3d[i].where(kmt > i)
-    vol3d.attrs = {"units" : "cm3", "long_name" : "Tcell volume"}
-    vol3d = vol3d.drop(("ULAT","ULONG"))
+        vol3d[i,:,:] = vol3d[i].where(kmt > i, 0.)
+    vol3d.attrs = {'units' : 'cm3', 'long_name' : 'Tcell volume'}
+    vol3d = vol3d.drop(('ULAT','ULONG'))
     vol3d.name = "vol3d"
     return vol3d
 
@@ -55,11 +55,10 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=25):
             "k_range" : str(klo)+" - "+str(khi)}
     var = tracer.isel(z_t=slice(klo,khi)) * vol3d.isel(z_t=slice(klo,khi))
     var_zint_map = var.sum(dim="z_t")
-    var_zint_map = var_zint_map.where(var_zint_map != 0.)
     var_zint_map.attrs = attr
     var_zint_map.name = tracer.name + "_zint" 
     var_zint_map = var_zint_map.drop(("ULONG","ULAT"))
-    return var_zint_map
+    return var_zint_map.where(var_zint_map != 0.)
 
 
 #------------------------------------------------------------------------------
@@ -117,31 +116,33 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     
     long_name = "lateral advective flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {"long_name" : long_name, "units" : units, "description" : description,\
-            "k_range" : str(klo)+" - "+str(khi)}
     
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    ds1 = xr.open_dataset(f1,decode_times=False,chunks={"time": 60})
+    ds2 = xr.open_dataset(f2,decode_times=False,chunks={"time": 60})
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    zlo = (ds1["z_w"]).isel(z_w=klo).values
+    zhi = (ds1["z_w"]).isel(z_w=(khi)).values
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi),\
+            "depth_range" :  "{0:3.2f} - {1:3.2f} m".format((zlo/100),(zhi/100))}
     # vol3d
     vol = vol3d.isel(z_t=slice(klo,khi))
     # e.g.: degC cm^3/s
-    ue = ue*vol
-    vn = vn*vol
+    ue = ue*vol  # Tcell_(i,j)
+    vn = vn*vol  # Tcell_(i,j)
     # shift grid:
-    uw = ue.roll(nlon=1,roll_coords=False)
-    vs = vn.roll(nlat=1,roll_coords=False)
+    uw = ue.roll(nlat=1,roll_coords=False) # Tcell_(i-1,j)
+    vs = vn.roll(nlon=1,roll_coords=False) # Tcell_(i,j-1)
     # Div [du/dx + du/dy]
     hdiv = (uw-ue) + (vs-vn)
     # vertical integration
-    var_lat_adv_res_map = hdiv.sum(dim="z_t")
+    var_lat_adv_res_map = hdiv.sum(dim="z_t",keep_attrs=True)
     var_lat_adv_res_map.attrs = attr
     var_lat_adv_res_map.name = TRACER.lower() + "_lat_adv_res"
     var_lat_adv_res_map = var_lat_adv_res_map.drop(("ULONG","ULAT"))
     return var_lat_adv_res_map.where(var_lat_adv_res_map != 0.)
-
 
 #------------------------------------------------------------------------------
 def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
@@ -205,9 +206,7 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     
     long_name = "lateral diffusive flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-    attr = {"long_name" : long_name, "units" : units, "description" : description,\
-            "k_range" : str(klo)+" - "+str(khi)}
-    
+      
     # read tracer associate variable
     f1 = glob(dir_budget+var_name1+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name1+"*.nc")[0]
     f2 = glob(dir_budget+var_name2+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name2+"*.nc")[0]
@@ -216,16 +215,21 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
+    zlo = (ds1["z_w"]).isel(z_w=klo).values
+    zhi = (ds1["z_w"]).isel(z_w=(khi)).values
     
+    attr = {"long_name" : long_name, "units" : units, "description" : description,\
+            "k_range" : str(klo)+" - "+str(khi),\
+            "depth_range" :  "{0:3.2f} - {1:3.2f} m".format((zlo/100),(zhi/100))}
     # vol3d
     vol = vol3d.isel(z_t=slice(klo,khi))
     # e.g.: degC cm^3/s
-    ue = ue*vol
-    vn = vn*vol
+    ue = ue*vol  # Tcell_(i,j)
+    vn = vn*vol  # Tcell_(i,j)
     
     # shift
-    uw = ue.roll(nlon=1,roll_coords=False)
-    vs = vn.roll(nlat=1,roll_coords=False)
+    uw = ue.roll(nlat=1,roll_coords=False)  # Tcell_(i-1,j)
+    vs = vn.roll(nlon=1,roll_coords=False)  # Tcell_(i,j-1)
     
     # Divergence
     #hdiv = (uw-ue) + (vs-vn)
