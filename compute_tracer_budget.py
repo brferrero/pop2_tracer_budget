@@ -55,6 +55,7 @@ temp_tend = tracer_budget_tend_appr(TRACER, time_bound,temp_zint_map)
 # Creating Dataset
 ds_out = temp_tend.to_dataset()
 ds_out["temp_zint_map"] = temp_zint_map
+ds_out["vol3d"] = vol3d
 #print(ds_out)
 
 #*****************************************************************************#
