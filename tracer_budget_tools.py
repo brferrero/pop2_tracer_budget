@@ -8,7 +8,21 @@ import numpy as np
 from glob import glob
 from dask.diagnostics import ProgressBar
 
-#------------------------------------------------------------------------------
+#*****************************************************************************#
+def pop_decode_time (var): 
+    varname = var.name
+    time = var.time
+    #time.values = time.values - 16
+    #var = var.assign_coords(time=time)
+    ds = xr.decode_cf(var.to_dataset(),decode_times=True)
+    return ds[varname]
+
+def rmMonAnnCyc (var):
+    climatology = var.groupby('time.month').mean('time')
+    anomalies = (var.groupby("time.month") - climatology).squeeze()
+    return anomalies.drop("month")
+
+#*****************************************************************************#
 def tracer_budget_vol3d (tarea, dz, kmt):
     """
     Arguments: cell area, cell height, max vertical indx
@@ -23,7 +37,7 @@ def tracer_budget_vol3d (tarea, dz, kmt):
     vol3d.name = "vol3d"
     return vol3d
 
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_mask2d (region_mask, sel_area = 0):
     """
     Return surface mask: if ocean than 1 else nan
@@ -32,7 +46,7 @@ def tracer_budget_mask2d (region_mask, sel_area = 0):
     mask = mask.where(region_mask != sel_area,np.nan)
     return (mask/mask)
 
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_mask3d (var3d):
     """
     Return volume mask: if ocean than 1 else nan
@@ -40,8 +54,8 @@ def tracer_budget_mask3d (var3d):
     mask3d = var3d/var3d
     mask3d.attrs = {'units' : '1 / np.nan', 'long_name' : 'mask3d'}
     return mask3d.where(mask3d != 0.,np.nan)
-    
-#------------------------------------------------------------------------------
+
+#*****************************************************************************#
 def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=25):
     """
     Arguments: var4d tracer(t,z,y,x), vol3d cell volume, 
@@ -60,8 +74,7 @@ def tracer_budget_var3d_zint_map (tracer, vol3d, klo=0, khi=25):
     var_zint_map = var_zint_map.drop(("ULONG","ULAT"))
     return var_zint_map.where(var_zint_map != 0.)
 
-
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     """
     Computes approximate TRACER budget tendency given vertically-integrated POP
@@ -91,8 +104,7 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     var_zint_tend.name = TRACER.lower() + "_tend"
     return var_zint_tend
 
-
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
                                     ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
@@ -133,8 +145,8 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     ue = ue*vol  # Tcell_(i,j)
     vn = vn*vol  # Tcell_(i,j)
     # shift grid:
-    uw = ue.roll(nlat=1,roll_coords=False) # Tcell_(i-1,j)
-    vs = vn.roll(nlon=1,roll_coords=False) # Tcell_(i,j-1)
+    uw = ue.roll(nlon=1,roll_coords=False) # Tcell_(i-1,j)
+    vs = vn.roll(nlat=1,roll_coords=False) # Tcell_(i,j-1)
     # Div [du/dx + du/dy]
     hdiv = (uw-ue) + (vs-vn)
     # vertical integration
@@ -144,9 +156,9 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     var_lat_adv_res_map = var_lat_adv_res_map.drop(("ULONG","ULAT"))
     return var_lat_adv_res_map.where(var_lat_adv_res_map != 0.)
 
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                                     ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
+                                     ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
     tracer vertical advection integral
     Obs. klo==0 -> wtt=0. => klo=1; khi => khi+1 (max:=59)
@@ -175,7 +187,7 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     # e.g. degC cm^3/s
     var_top = wt.isel(z_t=klo)
     var_bottom = wt.isel(z_t=khi+1)
-    # since it has NaN
+    # since it has NaN (NOTE: carefull with zeros)
     var_bottom = var_bottom.where(~np.isnan(var_bottom),0.)
     # vertical convergence
     var_vert_adv_res_map = (var_bottom - var_top)
@@ -184,8 +196,7 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT"))
     return var_vert_adv_res_map
 
-
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
                         ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
@@ -228,12 +239,12 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     vn = vn*vol  # Tcell_(i,j)
     
     # shift
-    uw = ue.roll(nlat=1,roll_coords=False)  # Tcell_(i-1,j)
-    vs = vn.roll(nlon=1,roll_coords=False)  # Tcell_(i,j-1)
+    uw = ue.roll(nlon=1,roll_coords=False)  # Tcell_(i-1,j)
+    vs = vn.roll(nlat=1,roll_coords=False)  # Tcell_(i,j-1)
     
     # Divergence
-    #hdiv = (uw-ue) + (vs-vn)
-    hdiv = (ue-uw) + (vn-vs)
+    hdiv = (uw-ue) + (vs-vn)
+    #hdiv = (ue-uw) + (vn-vs)
     # copy coordinates
     #hdiv = hdiv.assign_coords(TLAT=ue.coords.get("TLAT"))
     # vertical integration
@@ -243,7 +254,7 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     var_lat_mix_res_map = var_lat_mix_res_map.drop(("ULONG","ULAT"))
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
 
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, \
                             COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
     """
@@ -283,8 +294,7 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, \
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
-
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
                             ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
     """
@@ -321,8 +331,7 @@ def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
     return var_vert_mix_map
 
-
-#------------------------------------------------------------------------------
+#*****************************************************************************#
 def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
                          ens_member=4, tlo=912, thi=1032):
     """
@@ -372,8 +381,8 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
     var_sflux_map = var_sflux_map.drop(("ULONG","ULAT"))
     return var_sflux_map
 
+#*****************************************************************************#
 
-#------------------------------------------------------------------------------
 def tracer_budget_kpp_src (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
                             ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
     """
@@ -390,4 +399,5 @@ def tracer_budget_kpp_src (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     # compute temp flux
     temp_kpp_src = tracer_budget_var3d_zint_map(KPP_SRC,vol3d,klo,khi)
     return temp_kpp_src
-#------------------------------------------------------------------------------
+
+#*****************************************************************************#
