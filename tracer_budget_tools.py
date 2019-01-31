@@ -9,6 +9,21 @@ from glob import glob
 from dask.diagnostics import ProgressBar
 
 #*****************************************************************************#
+def get_filelist (basedir, scenario, freq, realm, varname):
+    filelist = glob(basedir + "/" + scenario + "/" + realm + "/" +\
+                    freq + "/" + varname + "/b.e11." + scenario + "*.nc")
+    return sorted(filelist)
+
+# devolve um arquivo/lista de arquivos de uma variavel e ens_member
+def get_filemember (basedir, scenario, freq, realm, ens_member, varname):
+    return sorted(glob(basedir + "/" + scenario + "/" + realm + "/" + freq + "/" + \
+                varname + "/b.e11." + scenario + ".f09_g16." + ens_member + ".pop.h.*.nc"))
+
+# recebe um arquivo/lista de arquivos e devolve um dataset
+def read_cesm_pop (file, chunk_sz):
+    return xr.open_mfdataset(file,decode_times=False,mask_and_scale=True,\
+                             concat_dim="time",data_vars="minimal",chunks={'time': chunk_sz})
+#*****************************************************************************#
 def pop_decode_time (var): 
     varname = var.name
     time = var.time
@@ -105,15 +120,12 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
     return var_zint_tend
 
 #*****************************************************************************#
-def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                                    ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_lat_adv_resolved (f_ue, f_vn, TRACER, vol3d, \
+                                    klo=0, khi=25, tlo=490, thi=610):
     """
     compute tracer lateral advection integral 
     based on tracer_budget_adv.ncl
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
     if TRACER == "TEMP":
         var_name1 = "UET"
         var_name2 = "VNT"
@@ -123,15 +135,12 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
         var_name2 = "VNS"
         units = "PSU cm^3/s"
         
-    f1 = glob(dir_budget+var_name1+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name1+"*.nc")[0]
-    f2 = glob(dir_budget+var_name2+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name2+"*.nc")[0]
-    
     long_name = "lateral advective flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
     
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,chunks={"time": 60})
-    ds2 = xr.open_dataset(f2,decode_times=False,chunks={"time": 60})
+    ds1 = read_cesm_pop (f_ue, 60)
+    ds2 = read_cesm_pop (f_vn, 60)
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     zlo = (ds1["z_w"]).isel(z_w=klo).values
@@ -157,15 +166,12 @@ def tracer_budget_lat_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     return var_lat_adv_res_map.where(var_lat_adv_res_map != 0.)
 
 #*****************************************************************************#
-def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                                     ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_vert_adv_resolved (f_wt, TRACER, vol3d,\
+                                     klo=0, khi=25, tlo=912, thi=1032):
     """
     tracer vertical advection integral
     Obs. klo==0 -> wtt=0. => klo=1; khi => khi+1 (max:=59)
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
     if TRACER == "TEMP":
         var_name = "WTT"
         units = "degC cm^3/s"
@@ -178,8 +184,7 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     attr = {"long_name" : long_name, "units" : units, "description" : description,\
             "k_range" : str(klo)+" - "+str(khi)}
     # read tracer associate variable
-    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
+    ds1 = read_cesm_pop (f_wt, 60)
     wt = ds1[var_name].isel(time=slice(tlo,thi))
     wt = wt.rename({"z_w_top" : "z_t"})
     wt["z_t"] = vol3d.z_t
@@ -197,16 +202,13 @@ def tracer_budget_vert_adv_resolved (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     return var_vert_adv_res_map
 
 #*****************************************************************************#
-def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                        ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_hmix (f_e, f_n, TRACER, vol3d,\
+                        klo=0, khi=25, tlo=912, thi=1032):
     """
     tracer horizontal mixing
     compute tracer hmix integrals from Horiz Diffusive Fluxes
     vertical fluxes are positive up
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
     if TRACER == "TEMP":
         units = "degC cm^3/s"
     else:
@@ -217,13 +219,10 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     
     long_name = "lateral diffusive flux (resolved)"
     description = "Int_z{-Div[<"+var_name1+">, <"+var_name2+">]}"
-      
     # read tracer associate variable
-    f1 = glob(dir_budget+var_name1+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name1+"*.nc")[0]
-    f2 = glob(dir_budget+var_name2+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name2+"*.nc")[0]
+    ds1 = read_cesm_pop (f_e, 60) 
+    ds2 = read_cesm_pop (f_n, 60) 
     
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    ds2 = xr.open_dataset(f2,decode_times=False,mask_and_scale=True,chunks={"time": 60})
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     zlo = (ds1["z_w"]).isel(z_w=klo).values
@@ -255,14 +254,11 @@ def tracer_budget_hmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     return var_lat_mix_res_map.where(var_lat_mix_res_map != 0.)
 
 #*****************************************************************************#
-def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, \
-                            COMPSET="B20TRC5CNBDRD", ens_member=4, tlo=912, thi=1032):
+def tracer_budget_dia_vmix (f_dia, TRACER, tarea, kmt, \
+                            klo=0, khi=25, tlo=912, thi=1032):
     """
     Computes vertical integral of diabatic vertical mixing (DIA_IMPVF_), ie. KPP
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
     if TRACER == "TEMP":
         units = "degC cm^3/s"
     else:
@@ -276,9 +272,8 @@ def tracer_budget_dia_vmix (TRACER, tarea, kmt, klo=0, khi=25, \
             "k_range" : str(klo)+" - "+str(khi)}
     
     # read tracer associate variable
-    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC cm/s
+    ds = read_cesm_pop (f_dia, 60)
+    FIELD = ds[var_name].isel(time=slice(tlo,thi)) # degC cm/s
     # degC cm^3/s
     FIELD = FIELD*tarea
     # zero diffusive flux across sea surface -> 0 
@@ -332,8 +327,7 @@ def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     return var_vert_mix_map
 
 #*****************************************************************************#
-def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
-                         ens_member=4, tlo=912, thi=1032):
+def tracer_budget_sflux (f_flx, TRACER, var_name, area2d, tlo=912, thi=1032):
     """
     compute domain-specific maps of tracer surface fluxes
     
@@ -341,20 +335,15 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
  
     based on tracer_budget_srf_flux.ncl
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
-    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     # read tracer associate variable
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-
-    rho_sw = ds1["rho_sw"]              # density of saltwater (g/cm^3)
+    ds = read_cesm_pop (f_flx, 60)
+    rho_sw = ds["rho_sw"]              # density of saltwater (g/cm^3)
     rho_sw = rho_sw * 1.e-3             # (kg/cm^3)
-    cp_sw = ds1["cp_sw"]                # spec. heat of saltwater (erg/g/K)
+    cp_sw = ds["cp_sw"]                # spec. heat of saltwater (erg/g/K)
     cp_sw = cp_sw * 1.e-7 * 1.e3        # (J/kg/K)
     rho_cp = rho_sw * cp_sw             # (J/cm^3/K)
-    latvap = ds1["latent_heat_vapor"]   # lat heat of vaporiz. (J/kg)
-    latfus = ds1["latent_heat_fusion"]  # lat heat of fusion (erg/g)
+    latvap = ds["latent_heat_vapor"]   # lat heat of vaporiz. (J/kg)
+    latfus = ds["latent_heat_fusion"]  # lat heat of fusion (erg/g)
     latfus = latfus * 1.e-7 * 1.e3      # (J/kg)
     # scale factors
     if var_name in ["SHF", "QFLUX", "SENH_F", "LWDN_F", "LWUP_F", "SHF_QSW", "MELTH_F"]:
@@ -371,7 +360,7 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
     else:
         units = "PSU cm^3/s"
         
-    FIELD = ds1[var_name].isel(time=slice(tlo,thi))
+    FIELD = ds[var_name].isel(time=slice(tlo,thi))
     var1 = FIELD * scale_factor
     var_sflux_map = var1*area2d
     long_name = "vertical flux across sea surface"
@@ -382,18 +371,14 @@ def tracer_budget_sflux (TRACER, var_name, area2d, COMPSET="B20TRC5CNBDRD",\
     return var_sflux_map
 
 #*****************************************************************************#
-
-def tracer_budget_kpp_src (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                            ens_member=4, klo=1, khi=25, tlo=912, thi=1032):
+def tracer_budget_kpp_src (f_kpp, TRACER, vol3d,\
+                           klo=1, khi=25, tlo=912, thi=1032):
     """
     compute tendency from KPP non local mixing term
     """
     var_name = "KPP_SRC_"+TRACER
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"    
-    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
     # read tracer associate variable
-    ds = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={'time': 84})
+    ds = read_cesm_pop (f_kpp, 60)
     KPP_SRC = ds[var_name].isel(time=slice(tlo,thi))
     #KPP_SRC = KPP_SRC.where(KPP_SRC != 0.)
     # compute temp flux
