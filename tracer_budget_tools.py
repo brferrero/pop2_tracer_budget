@@ -27,7 +27,7 @@ def read_cesm_pop (file, chunk_sz):
 def pop_decode_time (var): 
     varname = var.name
     time = var.time
-    #time.values = time.values - 16
+    time.values = time.values - 16
     #var = var.assign_coords(time=time)
     ds = xr.decode_cf(var.to_dataset(),decode_times=True)
     return ds[varname]
@@ -290,14 +290,11 @@ def tracer_budget_dia_vmix (f_dia, TRACER, tarea, kmt, \
     return var_vert_mix_map
 
 #*****************************************************************************#
-def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
-                            ens_member=4, klo=0, khi=25, tlo=912, thi=1032):
+def tracer_budget_adi_vmix (f_adi, TRACER, vol3d, \
+                            klo=0, khi=25, tlo=912, thi=1032):
     """
     Computes vertical integral of adiabatic vertical mixing (HDIFB_), ie. GM+Submeso
     """
-    ens_str = "{:0>3d}".format(ens_member)
-    dir_budget = "/chuva/db2/CESM-LENS/download/budget/"
-    
     if TRACER == "TEMP":
         units = "degC cm^3/s"
     else:
@@ -310,9 +307,8 @@ def tracer_budget_adi_vmix (TRACER, vol3d, COMPSET="B20TRC5CNBDRD",\
     attr = {"long_name" : long_name, "units" : units, "description" : description,\
             "k_range" : str(klo)+" - "+str(khi)}
     # read tracer associate variable
-    f1 = glob(dir_budget+var_name+"/b.e11."+COMPSET+".f09_g16."+ens_str+".pop.h."+var_name+"*.nc")[0]
-    ds1 = xr.open_dataset(f1,decode_times=False,mask_and_scale=True,chunks={"time": 60})
-    FIELD = ds1[var_name].isel(time=slice(tlo,thi)) # degC/s
+    ds = read_cesm_pop (f_adi, 60)
+    FIELD = ds[var_name].isel(time=slice(tlo,thi)) # degC/s
     FIELD = FIELD.rename({"z_w_bot" : "z_t"})
     FIELD["z_t"] = vol3d.z_t
     FIELD = FIELD*vol3d
