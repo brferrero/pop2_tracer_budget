@@ -39,6 +39,10 @@ def pop_decode_time (var):
     time.values = time.values + 16
     return ds[varname]
 
+# recebe uma variavel x (monthly) e devolve as medias anuais
+def month_to_annual (x):
+    return x.groupby('time.year').mean('time')
+
 # remove a media climatologica de var
 def rmMonAnnCyc (var):
     climatology = var.groupby('time.month').mean('time')
