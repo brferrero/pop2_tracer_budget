@@ -9,33 +9,56 @@ from glob import glob
 from dask.diagnostics import ProgressBar
 
 #*****************************************************************************#
+# use to sort by suffix (date)
+def get_suffix(x):
+    return x[-17:]
+
+# devolve lista ordenada pelo label de tempo do arquivo
 def get_filelist (basedir, scenario, freq, realm, varname):
     filelist = glob(basedir + "/" + scenario + "/" + realm + "/" +\
                     freq + "/" + varname + "/b.e11." + scenario + "*.nc")
-    return sorted(filelist)
+    return (sorted(filelist,key=get_suffix))
 
 # devolve um arquivo/lista de arquivos de uma variavel e ens_member
 def get_filemember (basedir, scenario, freq, realm, ens_member, varname):
     return sorted(glob(basedir + "/" + scenario + "/" + realm + "/" + freq + "/" + \
-                varname + "/b.e11." + scenario + ".f09_g16." + ens_member + ".pop.h.*.nc"))
+                varname + "/b.e11." + scenario + ".f09_g16." + ens_member + ".pop.h.*.nc"), key=get_suffix)
 
 # recebe um arquivo/lista de arquivos e devolve um dataset
 def read_cesm_pop (file, chunk_sz):
     return xr.open_mfdataset(file,decode_times=False,mask_and_scale=True,\
                              concat_dim="time",data_vars="minimal",chunks={'time': chunk_sz})
 #*****************************************************************************#
+# decode time axis (cesm/pop)
 def pop_decode_time (var): 
     varname = var.name
     time = var.time
     time.values = time.values - 16
     #var = var.assign_coords(time=time)
     ds = xr.decode_cf(var.to_dataset(),decode_times=True)
+    time.values = time.values + 16
     return ds[varname]
 
+# remove a media climatologica de var
 def rmMonAnnCyc (var):
     climatology = var.groupby('time.month').mean('time')
     anomalies = (var.groupby("time.month") - climatology).squeeze()
     return anomalies.drop("month")
+
+# devolve o indice referente ao ano inicial e ao ano final
+def get_time_index (time, initial_year, final_year):
+    aux = time
+    aux.name = "t"
+    t = pop_decode_time(aux)
+    yr_i = (t.isel(time=0).values).all().year
+    yr_f = (t.isel(time=-1).values).all().year
+    #print("Initial year: " + str(yr_i))
+    #print("Final year:" + str(yr_f))
+    idx_i = (initial_year - yr_i)*12
+    #idx_f = t.size - (yr_f - final_year)*12
+    idx_f = idx_i + (final_year - initial_year + 1)*12
+    del(t)
+    return idx_i,idx_f
 
 #*****************************************************************************#
 def tracer_budget_vol3d (tarea, dz, kmt):
