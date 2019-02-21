@@ -144,7 +144,7 @@ def tracer_budget_tend_appr (TRACER, time_bnd, var_zint):
 
 #*****************************************************************************#
 def tracer_budget_lat_adv_resolved (f_ue, f_vn, TRACER, vol3d, \
-                                    klo=0, khi=25, tlo=490, thi=610):
+                                    klo=0, khi=25, tlo=490, thi=610, z_int=True):
     """
     compute tracer lateral advection integral 
     based on tracer_budget_adv.ncl
@@ -179,10 +179,13 @@ def tracer_budget_lat_adv_resolved (f_ue, f_vn, TRACER, vol3d, \
     # shift grid:
     uw = ue.roll(nlon=1,roll_coords=False) # Tcell_(i-1,j)
     vs = vn.roll(nlat=1,roll_coords=False) # Tcell_(i,j-1)
-    # Div [du/dx + du/dy]
+    # Div [du/dx + dv/dy]
     hdiv = (uw-ue) + (vs-vn)
     # vertical integration
-    var_lat_adv_res_map = hdiv.sum(dim="z_t",keep_attrs=True)
+    if z_int:
+        var_lat_adv_res_map = hdiv.sum(dim="z_t",keep_attrs=True)
+    else:
+        var_lat_adv_res_map = hdiv
     var_lat_adv_res_map.attrs = attr
     var_lat_adv_res_map.name = TRACER.lower() + "_lat_adv_res"
     var_lat_adv_res_map = var_lat_adv_res_map.drop(("ULONG","ULAT"))
@@ -226,7 +229,7 @@ def tracer_budget_vert_adv_resolved (f_wt, TRACER, vol3d,\
 
 #*****************************************************************************#
 def tracer_budget_hmix (f_e, f_n, TRACER, vol3d,\
-                        klo=0, khi=25, tlo=912, thi=1032):
+                        klo=0, khi=25, tlo=912, thi=1032, z_int=True):
     """
     tracer horizontal mixing
     compute tracer hmix integrals from Horiz Diffusive Fluxes
@@ -270,7 +273,10 @@ def tracer_budget_hmix (f_e, f_n, TRACER, vol3d,\
     # copy coordinates
     #hdiv = hdiv.assign_coords(TLAT=ue.coords.get("TLAT"))
     # vertical integration
-    var_lat_mix_res_map = hdiv.sum(dim="z_t")
+    if z_int:
+        var_lat_mix_res_map = hdiv.sum(dim="z_t")
+    else:
+        var_lat_mix_res_map = hdiv
     var_lat_mix_res_map.attrs = attr
     var_lat_mix_res_map.name = TRACER.lower() + "_lat_mix_res"
     var_lat_mix_res_map = var_lat_mix_res_map.drop(("ULONG","ULAT"))
