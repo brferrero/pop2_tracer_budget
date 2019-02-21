@@ -193,7 +193,7 @@ def tracer_budget_lat_adv_resolved (f_ue, f_vn, TRACER, vol3d, \
 
 #*****************************************************************************#
 def tracer_budget_vert_adv_resolved (f_wt, TRACER, vol3d,\
-                                     klo=0, khi=25, tlo=912, thi=1032):
+                                     klo=0, khi=25, tlo=912, thi=1032, z_int=True):
     """
     tracer vertical advection integral
     Obs. klo==0 -> wtt=0. => klo=1; khi => khi+1 (max:=59)
@@ -214,14 +214,19 @@ def tracer_budget_vert_adv_resolved (f_wt, TRACER, vol3d,\
     wt = ds1[var_name].isel(time=slice(tlo,thi))
     wt = wt.rename({"z_w_top" : "z_t"})
     wt["z_t"] = vol3d.z_t
-    wt = wt*vol3d
     # e.g. degC cm^3/s
-    var_top = wt.isel(z_t=klo)
-    var_bottom = wt.isel(z_t=khi+1)
-    # since it has NaN (NOTE: carefull with zeros)
-    var_bottom = var_bottom.where(~np.isnan(var_bottom),0.)
-    # vertical convergence
-    var_vert_adv_res_map = (var_bottom - var_top)
+    wt = wt*vol3d
+    if z_int:
+        var_top = wt.isel(z_t=klo)
+        var_bottom = wt.isel(z_t=khi+1)
+        # since it has NaN (NOTE: carefull with zeros)
+        var_bottom = var_bottom.where(~np.isnan(var_bottom),0.)
+        # vertical convergence
+        var_vert_adv_res_map = (var_bottom - var_top)
+    else:
+        wt_z  = wt.shift(z_t=-1).fillna(0.)
+        var_vert_adv_res_map = wt_z.isel(z_t=slice(klo,khi)) - wt.isel(z_t=slice(klo,khi))
+
     var_vert_adv_res_map.attrs = attr
     var_vert_adv_res_map.name = TRACER.lower()+"_vert_adv_res"
     var_vert_adv_res_map = var_vert_adv_res_map.drop(("ULONG","ULAT"))
@@ -284,7 +289,7 @@ def tracer_budget_hmix (f_e, f_n, TRACER, vol3d,\
 
 #*****************************************************************************#
 def tracer_budget_dia_vmix (f_dia, TRACER, tarea, kmt, \
-                            klo=0, khi=25, tlo=912, thi=1032):
+                            klo=0, khi=25, tlo=912, thi=1032, z_int=True):
     """
     Computes vertical integral of diabatic vertical mixing (DIA_IMPVF_), ie. KPP
     """
@@ -303,24 +308,31 @@ def tracer_budget_dia_vmix (f_dia, TRACER, tarea, kmt, \
     # read tracer associate variable
     ds = read_cesm_pop (f_dia, 60)
     FIELD = ds[var_name].isel(time=slice(tlo,thi)) # degC cm/s
+    FIELD = FIELD.rename({"z_w_bot" : "z_t"})
+    FIELD["z_t"] = ds["z_t"]
     # degC cm^3/s
     FIELD = FIELD*tarea
-    # zero diffusive flux across sea surface -> 0 
-    FIELD_TOP = FIELD.isel(z_w_bot=klo)
-    FIELD_BOT = FIELD.isel(z_w_bot=khi)
-    #tarea_bot = tarea.where(kmt > khi,0.)
-    #tarea_top = tarea.where(kmt > klo,0.)
-    #
-    FIELD_BOT = FIELD_BOT.fillna(0.)
-    var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
+    if z_int:
+        # zero diffusive flux across sea surface -> 0 
+        FIELD_TOP = FIELD.isel(z_w_bot=klo)
+        FIELD_BOT = FIELD.isel(z_w_bot=khi)
+        #tarea_bot = tarea.where(kmt > khi,0.)
+        #tarea_top = tarea.where(kmt > klo,0.)
+        #
+        FIELD_BOT = FIELD_BOT.fillna(0.)
+        var_vert_mix_map = -(FIELD_BOT - FIELD_TOP)
+    else:
+        diadiff_z = FIELD.shift(z_t=1).fillna(0.)
+        var_vert_mix_map = diadiff_z.isel(z_t=slice(klo,khi)) - FIELD.isel(z_t=slice(klo,khi))
+
     var_vert_mix_map.name = TRACER.lower() + "_dia_vmix"
     var_vert_mix_map.attrs = attr
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
-    return var_vert_mix_map
+    return var_vert_mix_map.where(var_vert_mix_map != 0.)
 
 #*****************************************************************************#
 def tracer_budget_adi_vmix (f_adi, TRACER, vol3d, \
-                            klo=0, khi=25, tlo=912, thi=1032):
+                            klo=0, khi=25, tlo=912, thi=1032, z_int=True):
     """
     Computes vertical integral of adiabatic vertical mixing (HDIFB_), ie. GM+Submeso
     """
@@ -345,11 +357,16 @@ def tracer_budget_adi_vmix (f_adi, TRACER, vol3d, \
     FIELD_TOP = FIELD.isel(z_t=klo)
     FIELD_BOT = FIELD.isel(z_t=khi)
     #
-    var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
+    if z_int:
+        var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
+    else:
+        hdifb_z = FIELD.shift(z_t=1).fillna(0.)
+        var_vert_mix_map = hdifb_z.isel(z_t=slice(klo,khi)) - FIELD.isel(z_t=slice(klo,khi)).fillna(0.)
+
     var_vert_mix_map.attrs = attr
     var_vert_mix_map.name = TRACER.lower() + "_adi_vmix"
     var_vert_mix_map = var_vert_mix_map.drop(("ULONG","ULAT"))
-    return var_vert_mix_map
+    return var_vert_mix_map.where(var_vert_mix_map != 0.)
 
 #*****************************************************************************#
 def tracer_budget_sflux (f_flx, TRACER, var_name, area2d, tlo=912, thi=1032):
