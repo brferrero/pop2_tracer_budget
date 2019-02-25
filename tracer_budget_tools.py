@@ -171,7 +171,7 @@ def tracer_budget_lat_adv_resolved (f_ue, f_vn, TRACER, vol3d, \
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     zlo = (ds1["z_w"]).isel(z_w=klo).values
-    zhi = (ds1["z_w"]).isel(z_w=(khi)).values
+    zhi = (ds1["z_w"]).isel(z_w=(khi-1)).values
     attr = {"long_name" : long_name, "units" : units, "description" : description,\
             "k_range" : str(klo)+" - "+str(khi),\
             "depth_range" :  "{0:3.2f} - {1:3.2f} m".format((zlo/100),(zhi/100))}
@@ -261,7 +261,7 @@ def tracer_budget_hmix (f_e, f_n, TRACER, vol3d,\
     ue = (ds1[var_name1]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     vn = (ds2[var_name2]).isel(z_t=slice(klo,khi),time=slice(tlo,thi))
     zlo = (ds1["z_w"]).isel(z_w=klo).values
-    zhi = (ds1["z_w"]).isel(z_w=(khi)).values
+    zhi = (ds1["z_w"]).isel(z_w=(khi-1)).values
     
     attr = {"long_name" : long_name, "units" : units, "description" : description,\
             "k_range" : str(klo)+" - "+str(khi),\
