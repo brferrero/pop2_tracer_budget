@@ -357,11 +357,10 @@ def tracer_budget_adi_vmix (f_adi, TRACER, vol3d, \
     FIELD = FIELD.rename({"z_w_bot" : "z_t"})
     FIELD["z_t"] = vol3d.z_t
     FIELD = FIELD*vol3d
-    # zero diffusive flux across sea surface -> 0 
-    FIELD_TOP = FIELD.isel(z_t=klo)
-    FIELD_BOT = FIELD.isel(z_t=khi)
-    #
     if z_int:
+    # zero diffusive flux across sea surface -> 0 
+        FIELD_TOP = FIELD.isel(z_t=klo)
+        FIELD_BOT = FIELD.isel(z_t=khi-1)
         var_vert_mix_map = -(FIELD_BOT.fillna(0.) - FIELD_TOP)
     else:
         hdifb_z = FIELD.shift(z_t=1).fillna(0.)
