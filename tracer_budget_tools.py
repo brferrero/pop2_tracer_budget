@@ -30,14 +30,16 @@ def read_cesm_pop (file, chunk_sz):
                              concat_dim="time",data_vars="minimal",chunks={'time': chunk_sz})
 #*****************************************************************************#
 # decode time axis (cesm/pop)
-def pop_decode_time (var): 
-    varname = var.name
-    time = var.time
-    time.values = time.values - 16
-    #var = var.assign_coords(time=time)
-    ds = xr.decode_cf(var.to_dataset(),decode_times=True)
-    time.values = time.values + 16
-    return ds[varname]
+def pop_decode_time (x, time_bound): 
+    t0 = x.time.load()
+    x = x.drop('time')
+    t0 = t0.drop('time')
+    del(t0.attrs['bounds'])
+    t1 = (time_bound[:,0]+time_bound[:,1])*0.5
+    t1 = t1.drop('time')
+    t0.values = t1.values
+    x = x.assign_coords(time=t0)
+    return xr.decode_cf(ssh.to_dataset(),decode_times=True)[x.name]
 
 # recebe uma variavel x (monthly) e devolve as medias anuais
 def month_to_annual (x):
