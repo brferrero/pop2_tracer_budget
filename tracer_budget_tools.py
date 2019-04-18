@@ -28,6 +28,36 @@ def get_filemember (basedir, scenario, freq, realm, ens_member, varname):
 def read_cesm_pop (file, chunk_sz):
     return xr.open_mfdataset(file,decode_times=False,mask_and_scale=True,\
                              concat_dim="time",data_vars="minimal",chunks={'time': chunk_sz})
+
+# mask continent and return ocean area only
+def get_ocean_area (tarea, region):
+    return tarea.where(region!=0)
+
+# area weighted mean
+def global_area_mean (x, ocean_area):
+    wgt = ocean_area/ocean_area.sum()
+    return (x*wgt).sum(dim=('nlat','nlon'))
+
+# get volume cell matrix
+def get_vol3d (tarea, dz, kmt):
+    nx = kmt.shape[1]
+    ny = kmt.shape[0]
+    nz = dz.shape[0]
+    ones3d = xr.DataArray(np.ones((nz,ny,nx)), dims=(dz.dims[0],kmt.dims[0],kmt.dims[1]), coords={dz.dims[0] : dz[dz.dims[0]]})
+    da_nz = xr.DataArray(np.arange(0, nz), dims=(dz.dims[0]), coords={dz.dims[0]: dz[dz.dims[0]]})
+    kmt3d = ones3d*da_nz
+    kmt3d = kmt3d.where(kmt3d <= kmt - 1)
+    kmt3d = xr.where(kmt3d.notnull(), 1., 0.)
+    vol3d = kmt3d*tarea*dz
+    vol3d.name = 'vol3d'
+    return vol3d
+
+# volume weighted mean
+def global_volume_mean (x, vol3d):
+    V = vol3d.sum()
+    wgt = vol3d/V
+    return (x*wgt).sum(dim=('z_t','nlat','nlon'))
+
 #*****************************************************************************#
 # decode time axis (cesm/pop)
 def pop_decode_time (x, time_bound): 
@@ -39,7 +69,9 @@ def pop_decode_time (x, time_bound):
     t1 = t1.drop('time')
     t0.values = t1.values
     x = x.assign_coords(time=t0)
-    return xr.decode_cf(ssh.to_dataset(),decode_times=True)[x.name]
+    del(t0)
+    del(t1)
+    return xr.decode_cf(x.to_dataset(),decode_times=True)[x.name]
 
 # recebe uma variavel x (monthly) e devolve as medias anuais
 def month_to_annual (x):
