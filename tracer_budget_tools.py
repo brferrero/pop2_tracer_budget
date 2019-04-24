@@ -352,8 +352,8 @@ def tracer_budget_dia_vmix (f_dia, TRACER, tarea, kmt, \
     FIELD = FIELD*tarea
     if z_int:
         # zero diffusive flux across sea surface -> 0 
-        FIELD_TOP = FIELD.isel(z_w_bot=klo)
-        FIELD_BOT = FIELD.isel(z_w_bot=khi)
+        FIELD_TOP = FIELD.isel(z_t=klo)
+        FIELD_BOT = FIELD.isel(z_t=khi)
         #tarea_bot = tarea.where(kmt > khi,0.)
         #tarea_top = tarea.where(kmt > klo,0.)
         #
